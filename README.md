@@ -9,11 +9,3 @@ curl -fsSL https://raw.githubusercontent.com/Hanashiko/php-limits/master/check_p
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Hanashiko/php-limits/master/increase_php.sh | bash
 ```
-
-
-```
-```
-```
-```
-```
-```
