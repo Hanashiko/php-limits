@@ -1,20 +1,19 @@
 #!/bin/bash
 
-# Читаємо аргументи
-# $1 - версія (наприклад 8.1)
-# $2 - розмір у МБ (наприклад 500)
+# Аргументи
 PHP_VER=$1
-SIZE_MB=${2:-256}
+SIZE_MB=$2
+PHP_TYPE=${3:-all} # за замовчуванням 'all'
 
-if [ -z "$PHP_VER" ]; then
-  echo "Помилка: Не вказано версію PHP!"
-  echo "Використання: bash $0 <версія|all> <розмір_мб>"
-  echo "Приклад: bash $0 8.1 500"
+if [ -z "$PHP_VER" ] || [ -z "$SIZE_MB" ]; then
+  echo "Помилка: Недостатньо аргументів!"
+  echo "Використання: bash $0 <версія|all> <розмір_мб> <тип|all>"
+  echo "Типи: fpm, apache2, cli, all"
+  echo "Приклад: bash $0 8.1 512 fpm"
   exit 1
 fi
 
 CLEAN_SIZE=$(echo $SIZE_MB | sed 's/[^0-9]//g')
-
 NEW_UPLOAD="${CLEAN_SIZE}M"
 NEW_POST="$((CLEAN_SIZE + 8))M"
 NEW_MEMORY="$((CLEAN_SIZE * 2))M"
@@ -38,20 +37,34 @@ update_param() {
 }
 
 echo "-----------------------------------------------------"
-echo "Конфігурація: PHP $PHP_VER | Файл: $NEW_UPLOAD"
+echo "Налаштування: PHP $PHP_VER | Тип: $PHP_TYPE | Файл: $NEW_UPLOAD"
 echo "-----------------------------------------------------"
 
-if [ "$PHP_VER" == "all" ]; then
-  SEARCH_PATH="/etc/php"
-else
-  SEARCH_PATH="/etc/php/$PHP_VER"
-  if [ ! -d "$SEARCH_PATH" ]; then
-    echo "Помилка: Версія $PHP_VER не знайдена в $SEARCH_PATH"
-    exit 1
-  fi
+case $PHP_TYPE in
+fpm) TYPE_FILTER="fpm" ;;
+apache2) TYPE_FILTER="apache2" ;;
+cli) TYPE_FILTER="cli" ;;
+all) TYPE_FILTER="fpm|apache2|cli" ;;
+*)
+  echo "Невідомий тип: $PHP_TYPE"
+  exit 1
+  ;;
+esac
+
+SEARCH_PATH="/etc/php"
+[ "$PHP_VER" != "all" ] && SEARCH_PATH="/etc/php/$PHP_VER"
+
+if [ ! -d "$SEARCH_PATH" ]; then
+  echo "Помилка: Шлях $SEARCH_PATH не знайдено."
+  exit 1
 fi
 
-INI_FILES=$(find $SEARCH_PATH -name "php.ini" | grep -E "fpm|apache2|cli")
+INI_FILES=$(find $SEARCH_PATH -name "php.ini" | grep -E "$TYPE_FILTER")
+
+if [ -z "$INI_FILES" ]; then
+  echo "Файлів конфігурації не знайдено за вказаними параметрами."
+  exit 1
+fi
 
 for ini in $INI_FILES; do
   echo "Оновлюю: $ini"
@@ -66,20 +79,21 @@ done
 echo "-----------------------------------------------------"
 echo "Перезавантаження сервісів..."
 
-if [ "$PHP_VER" == "all" ]; then
-  FPM_SERVICES=$(systemctl list-units --type=service --state=running | grep php | grep fpm | awk '{print $1}')
-else
-  FPM_SERVICES=$(systemctl list-units --type=service --state=running | grep "php$PHP_VER-fpm" | awk '{print $1}')
+if [[ "$PHP_TYPE" == "fpm" || "$PHP_TYPE" == "all" ]]; then
+  if [ "$PHP_VER" == "all" ]; then
+    FPM_SERVICES=$(systemctl list-units --type=service --state=running | grep php | grep fpm | awk '{print $1}')
+  else
+    FPM_SERVICES=$(systemctl list-units --type=service --state=running | grep "php$PHP_VER-fpm" | awk '{print $1}')
+  fi
+  for s in $FPM_SERVICES; do systemctl restart "$s" && echo "Restarted $s"; done
 fi
 
-for service in $FPM_SERVICES; do
-  systemctl restart "$service"
-  echo "Сервіс $service перезапущено."
-done
-
-if systemctl is-active --quiet apache2; then
-  systemctl restart apache2
-  echo "Apache2 перезапущено."
+if [[ "$PHP_TYPE" == "apache2" || "$PHP_TYPE" == "all" ]]; then
+  if systemctl is-active --quiet apache2; then
+    systemctl restart apache2
+    echo "Restarted Apache2"
+  fi
 fi
 
-echo "Готово!"
+echo "-----------------------------------------------------"
+echo "Готово! Нові ліміти застосовані."
