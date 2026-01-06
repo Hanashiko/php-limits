@@ -14,5 +14,3 @@ curl -fsSL https://raw.githubusercontent.com/Hanashiko/php-limits/master/increas
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Hanashiko/php-limits/master/magic_increase_php.sh | bash -s -- 500
 ```
-```
-```
